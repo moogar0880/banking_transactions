@@ -9,3 +9,10 @@ edition = "2021"
 clap = "2.34"
 csv = "1.1"
 serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "transaction_benches"
+harness = false
