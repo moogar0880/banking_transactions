@@ -727,16 +727,26 @@ mod tests {
         assert!(ledger.process_transaction(&tx1).is_ok());
 
         // Now attempt to withdraw more money than we just deposited and verify
-        // we get the expected error.
+        // the transaction succeeds, but doesn't complete the withdrawal.
         let tx2 = Transaction {
             r#type: TransactionType::Withdrawal,
             client,
             tx: 2,
             amount: Some(20.0),
         };
+        assert!(ledger.process_transaction(&tx2).is_ok());
+
+        // Now verify the state of the account the withdrawals failed on due to
+        // insufficient funds.
         assert_eq!(
-            ledger.process_transaction(&tx2).unwrap_err().to_string(),
-            WithdrawalError::InsufficientFunds(20.0, 10.0).to_string()
+            ledger.accounts.get(&client),
+            Some(&Account {
+                client,
+                available: 10.0,
+                held: 0.0,
+                total: 10.0,
+                locked: false
+            })
         );
     }
 
