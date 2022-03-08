@@ -1,8 +1,9 @@
 use std::error::Error;
 use std::fmt;
 use std::fmt::Formatter;
+use std::string::FromUtf8Error;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct DuplicateTransactionError {
     tx_id: u32,
 }
@@ -13,17 +14,18 @@ impl DuplicateTransactionError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum AccountError {
     AccountLocked(u16),
     NoSuchAccount(u16),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum DepositError {
     AmountRequired,
     AccountLocked,
     DuplicateTx(DuplicateTransactionError),
+    NegativeDeposit,
 }
 
 #[derive(Debug)]
@@ -33,13 +35,13 @@ pub enum WithdrawalError {
     InsufficientFunds(f64, f64),
     NoSuchAccount(u16),
     DuplicateTx(DuplicateTransactionError),
+    NegativeWithdrawal,
 }
 
 #[derive(Debug)]
 pub enum DisputeError {
     AccountLocked,
     NoSuchAccount(u16),
-    NoSuchTransaction(u32),
     AmountRequired,
 }
 
@@ -47,18 +49,20 @@ pub enum DisputeError {
 pub enum ResolveError {
     AccountLocked,
     NoSuchAccount(u16),
-    TransactionNotDisputed(u32),
     AmountRequired,
-    NoSuchTransaction(u32),
 }
 
 #[derive(Debug)]
 pub enum ChargebackError {
     AccountLocked,
     NoSuchAccount(u16),
-    TransactionNotDisputed(u32),
     AmountRequired,
-    NoSuchTransaction(u32),
+}
+
+#[derive(Debug)]
+pub enum StatementError {
+    SerializeError(csv::Error),
+    EncodingError(FromUtf8Error),
 }
 
 impl fmt::Display for DuplicateTransactionError {
@@ -85,6 +89,9 @@ impl fmt::Display for DepositError {
             ),
             DepositError::AccountLocked => write!(f, "unable to deposit funds, account is locked"),
             DepositError::DuplicateTx(err) => write!(f, "failed to deposit funds: {}", err),
+            DepositError::NegativeDeposit => {
+                write!(f, "unable to deposit funds, amount is negative")
+            }
         }
     }
 }
@@ -114,6 +121,9 @@ impl fmt::Display for WithdrawalError {
                 )
             }
             WithdrawalError::DuplicateTx(err) => write!(f, "failed to withdraw funds: {}", err),
+            WithdrawalError::NegativeWithdrawal => {
+                write!(f, "unable to withdraw funds, amount is negative")
+            }
         }
     }
 }
@@ -129,7 +139,6 @@ impl fmt::Display for DisputeError {
                 "unable to dispute transaction with non-existent account {}",
                 id
             ),
-            DisputeError::NoSuchTransaction(id) => write!(f, "no such transaction exists: {}", id),
             DisputeError::AmountRequired => write!(
                 f,
                 "disputed transactions MUST have a specified amount, but none was present"
@@ -149,16 +158,10 @@ impl fmt::Display for ResolveError {
                 "unable to resolve disputed transaction with non-existent account {}",
                 id
             ),
-            ResolveError::TransactionNotDisputed(id) => write!(
-                f,
-                "unable to resolve transaction {}, transaction is not disputed",
-                id
-            ),
             ResolveError::AmountRequired => write!(
                 f,
                 "transactions MUST have a specified amount in order to be resolved"
             ),
-            ResolveError::NoSuchTransaction(id) => write!(f, "no such transaction exists: {}", id),
         }
     }
 }
@@ -174,18 +177,21 @@ impl fmt::Display for ChargebackError {
                 "unable to charge back transaction with non-existent account: {}",
                 id
             ),
-            ChargebackError::TransactionNotDisputed(id) => write!(
-                f,
-                "unable to chargeback transaction {}, transaction is not disputed",
-                id
-            ),
             ChargebackError::AmountRequired => write!(
                 f,
                 "transactions MUST have a specified amount in order to be charged back"
             ),
-            ChargebackError::NoSuchTransaction(id) => {
-                write!(f, "no such transaction exists: {}", id)
+        }
+    }
+}
+
+impl fmt::Display for StatementError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            StatementError::SerializeError(err) => {
+                write!(f, "failed to serialize statement record: {}", err)
             }
+            StatementError::EncodingError(err) => write!(f, "failed to encode csv report: {}", err),
         }
     }
 }
@@ -229,6 +235,18 @@ impl From<AccountError> for ChargebackError {
     }
 }
 
+impl From<csv::Error> for StatementError {
+    fn from(err: csv::Error) -> Self {
+        StatementError::SerializeError(err)
+    }
+}
+
+impl From<FromUtf8Error> for StatementError {
+    fn from(err: FromUtf8Error) -> Self {
+        StatementError::EncodingError(err)
+    }
+}
+
 impl Error for DuplicateTransactionError {}
 impl Error for AccountError {}
 impl Error for DepositError {}
@@ -236,3 +254,4 @@ impl Error for WithdrawalError {}
 impl Error for DisputeError {}
 impl Error for ResolveError {}
 impl Error for ChargebackError {}
+impl Error for StatementError {}
